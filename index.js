@@ -4,6 +4,7 @@ const { addLog, getLogs } = require("./logger");
 const mineflayer = require("mineflayer");
 const { Movements, pathfinder, goals } = require("mineflayer-pathfinder");
 const { GoalBlock } = goals;
+const autoeat = require("mineflayer-auto-eat").plugin;
 const config = require("./settings.json");
 const express = require("express");
 const http = require("http");
@@ -1220,10 +1221,11 @@ function createBot() {
       port: config.server.port,
       version: botVersion,
       hideErrors: false,
-      checkTimeoutInterval: 600000,
+      checkTimeoutInterval: 30000, // Reduced from 600000 to detect silent kicks/drops faster
     });
 
     bot.loadPlugin(pathfinder);
+    bot.loadPlugin(autoeat);
 
     // FIX: connection timeout - end the old bot before reconnecting to avoid ghost bots
     clearBotTimeouts();
@@ -1239,7 +1241,7 @@ function createBot() {
         bot = null;
         scheduleReconnect();
       }
-    }, 300000); // 150s - Aternos servers can take 90-120s to finish spawning a player
+    }, 300000); // 300s - Aternos servers can take up to 5 mins to finish spawning a player during heavy load
 
     // FIX: guard against spawn firing twice (can happen on some servers)
     let spawnHandled = false;
@@ -1277,6 +1279,17 @@ function createBot() {
       defaultMove.fallDamageCost = 1000;
 
       initializeModules(bot, mcData, defaultMove);
+
+      if (config.modules && config.modules["auto-eat"]) {
+        bot.autoEat.options.priority = "foodPoints";
+        bot.autoEat.options.bannedFood = ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish"];
+        bot.autoEat.options.eatingTimeout = 3000;
+        
+        bot.on("health", () => {
+          if (bot.food === 20) bot.autoEat.disable();
+          else bot.autoEat.enable();
+        });
+      }
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
@@ -1355,6 +1368,16 @@ function createBot() {
       scheduleReconnect();
     });
 
+    bot.on("death", () => {
+      addLog("[Bot] Bot died in-game! Attempting to respawn...");
+      // Aternos considers players on death screen as AFK, so we must respawn
+      setTimeout(() => {
+        if (bot && typeof bot.clearControlStates === 'function') {
+           bot.clearControlStates();
+        }
+      }, 500);
+    });
+
     bot.on("error", (err) => {
       const msg = err.message || "";
       addLog(`[Bot] Error: ${msg}`);
@@ -1392,10 +1415,81 @@ function scheduleReconnect() {
 }
 
 // ============================================================
+// AUTO-SLEEP (BEDS) MODULE
+// ============================================================
+function startAutoSleep(bot) {
+  if (!config.modules || !config.modules.beds) return;
+
+  let isSleeping = false;
+
+  bot.on('time', async () => {
+    if (!botState.connected || !bot.time) return;
+
+    const isNight = bot.time.timeOfDay >= 12541 && bot.time.timeOfDay <= 23458;
+    const isThunder = bot.isRaining;
+    
+    if ((isNight || isThunder) && !isSleeping && !bot.isSleeping) {
+      isSleeping = true;
+      try {
+        const bed = bot.findBlock({
+          matching: block => bot.isABed(block),
+          maxDistance: 32
+        });
+
+        if (bed) {
+          addLog("[Auto-Sleep] Hari gelap, menemukan kasur terdekat. Otw tidur...");
+          bot.pathfinder.setGoal(new goals.GoalNear(bed.position.x, bed.position.y, bed.position.z, 2));
+
+          const onGoalReached = async () => {
+            bot.removeListener("goal_reached", onGoalReached);
+            try {
+              if (!bot.isSleeping) {
+                await bot.sleep(bed);
+                addLog("[Auto-Sleep] Zzz... Bot sedang tidur...");
+              }
+            } catch (err) {
+              addLog(`[Auto-Sleep] Gagal tidur: ${err.message}`);
+              isSleeping = false;
+            }
+          };
+          bot.on("goal_reached", onGoalReached);
+          
+          setTimeout(() => {
+            bot.removeListener("goal_reached", onGoalReached);
+            isSleeping = false;
+          }, 15000);
+        } else {
+          isSleeping = false;
+        }
+      } catch (err) {
+        isSleeping = false;
+      }
+    }
+  });
+
+  bot.on('wake', () => {
+    isSleeping = false;
+    addLog("[Auto-Sleep] Pagi tiba! Bot sudah bangun.");
+    try {
+      if (typeof bot.setControlState === 'function') {
+        bot.setControlState('forward', true);
+        setTimeout(() => {
+          if (bot && typeof bot.setControlState === 'function') {
+            bot.setControlState('forward', false);
+          }
+        }, 1000);
+      }
+    } catch(e){}
+  });
+}
+
+// ============================================================
 // MODULE INITIALIZATION
 // ============================================================
 function initializeModules(bot, mcData, defaultMove) {
   addLog("[Modules] Initializing all modules...");
+  
+  startAutoSleep(bot);
 
   // ---------- AUTO AUTH (REACTIVE) ----------
   if (config.utils["auto-auth"] && config.utils["auto-auth"].enabled) {
