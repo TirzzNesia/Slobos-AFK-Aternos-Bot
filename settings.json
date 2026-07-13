@@ -7,7 +7,7 @@
   },
   "server": {
     "ip": "zexo.aternos.me",
-    "port": 49589,
+    "port": 25565,
     "version": "1.20.4",
     "try-creative": false
   },
@@ -60,7 +60,8 @@
   "modules": {
     "avoidMobs": true,
     "combat": true,
-    "beds": false,
+    "beds": true,
+    "auto-eat": true,
     "chat": true,
     "console-commands": true
   },
