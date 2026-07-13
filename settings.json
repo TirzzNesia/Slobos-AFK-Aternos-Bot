@@ -6,8 +6,8 @@
     "type": "offline"
   },
   "server": {
-    "ip": "blueracer.aternos.host",
-    "port": 49589,
+    "ip": "zexo.aternos.me",
+    "port": 25565,
     "version": "1.20.4",
     "try-creative": false
   },
