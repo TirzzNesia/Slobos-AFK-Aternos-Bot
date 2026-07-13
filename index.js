@@ -1281,14 +1281,13 @@ function createBot() {
       initializeModules(bot, mcData, defaultMove);
 
       if (config.modules && config.modules["auto-eat"]) {
-        bot.autoEat.options.priority = "foodPoints";
-        bot.autoEat.options.bannedFood = ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish"];
-        bot.autoEat.options.eatingTimeout = 3000;
-        
-        bot.on("health", () => {
-          if (bot.food === 20) bot.autoEat.disable();
-          else bot.autoEat.enable();
+        bot.autoEat.setOpts({
+          priority: "foodPoints",
+          bannedFood: ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish", "chorus_fruit"],
+          eatingTimeout: 3000
         });
+        
+        bot.autoEat.enableAuto();
       }
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
@@ -1305,6 +1304,16 @@ function createBot() {
           message.includes("Set own game mode to Creative Mode")
         ) {
           addLog("[INFO] Bot is now in Creative Mode.");
+        }
+      });
+
+      // Chat command to locate the bot
+      bot.on("chat", (username, message) => {
+        if (username === bot.username) return;
+        
+        if (message.trim().toLowerCase() === "!posisi") {
+          const pos = bot.entity.position;
+          bot.chat(`Posisi gua sekarang di X: ${Math.round(pos.x)}, Y: ${Math.round(pos.y)}, Z: ${Math.round(pos.z)}`);
         }
       });
     });
@@ -1449,7 +1458,10 @@ function startAutoSleep(bot) {
               }
             } catch (err) {
               addLog(`[Auto-Sleep] Gagal tidur: ${err.message}`);
-              isSleeping = false;
+              // Tambahin jeda 10 detik biar gak spam nyoba tidur terus-terusan
+              setTimeout(() => {
+                isSleeping = false;
+              }, 10000);
             }
           };
           bot.on("goal_reached", onGoalReached);
@@ -1491,6 +1503,32 @@ function initializeModules(bot, mcData, defaultMove) {
   
   startAutoSleep(bot);
 
+  // ---------- AUTO CHAT MESSAGES ----------
+  if (config.utils && config.utils["chat-messages"] && config.utils["chat-messages"].enabled) {
+    const chatSettings = config.utils["chat-messages"];
+    if (chatSettings.messages && chatSettings.messages.length > 0) {
+      let messageIndex = 0;
+      
+      const chatInterval = setInterval(() => {
+        if (!bot || !botState.connected) return;
+        
+        const msg = chatSettings.messages[messageIndex];
+        bot.chat(msg);
+        addLog(`[Auto-Chat] Sent: ${msg}`);
+        
+        messageIndex++;
+        if (messageIndex >= chatSettings.messages.length) {
+          if (!chatSettings.repeat) {
+            clearInterval(chatInterval);
+          } else {
+            messageIndex = 0;
+          }
+        }
+      }, (chatSettings["repeat-delay"] || 120) * 1000);
+      
+      activeIntervals.push(chatInterval);
+    }
+  }
   // ---------- AUTO AUTH (REACTIVE) ----------
   if (config.utils["auto-auth"] && config.utils["auto-auth"].enabled) {
     const password = config.utils["auto-auth"].password;
