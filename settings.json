@@ -1,14 +1,14 @@
 {
   "name": "AFK Bot",
   "bot-account": {
-    "username": "Zexo728",
+    "username": "Zexo00",
     "password": "",
     "type": "offline"
   },
   "server": {
     "ip": "zexo.aternos.me",
     "port": 25565,
-    "version": "",
+    "version": "1.20.4",
     "try-creative": false
   },
   "position": {
@@ -19,8 +19,8 @@
   },
   "utils": {
     "auto-auth": {
-      "enabled": true,
-      "password": "zexo321"
+      "enabled": false,
+      "password": "Zexo321"
     },
     "anti-afk": {
       "enabled": true,
